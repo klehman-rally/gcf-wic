@@ -1,0 +1,156 @@
+
+
+   Copy Jira to Rally pipeline
+
+           _
+          / \
+          \_/
+           
+
+        -----------
+
+        -----------
+
+        Connector invocation
+           _
+          / \    validate invocation authorization
+          \_/    validate existence of specified configuration
+                 validate the configuration 
+                 generate a GUID-like conf_run_ident
+                 generate a a conf_passport  that includes the sub_id, the conf_auth_key, 
+                                                               conf_name, conf_run_ident
+                                                               log_name, time_file_name,
+                                                               issuance_timestamp,
+                                                               expiration_timestamp
+
+
+                       |  |
+         --->         /    \   key-value store?   for Jira and Rally access creds?
+                     +______+     keyed by the conf_auth_key and conf_run_ident
+
+
+        ---------------------------
+          |conf_run_passport| ...
+        ---------------------------
+      
+
+       Jira issues retrieval
+           _
+          / \
+          \_/
+           
+
+       Retrieval of "new" Jira items
+            Jira REST API using JQL
+            JSON data for item issue 
+              used to realize an internal JiraIssue representation
+
+      Maybe don't create a JiraIssue from the returned JSON data, just put JSON data in message to PubSub channel
+      Pickle the JiraIssue representation to put into a message for PubSub channel ?
+
+        Create a "key" for the item being processed
+             (sub_id, conf_run_ident, x of y, pipeline_entry_timestamp)
+
+        --------------------------------------------------------------
+          |Jira issue, num x of y, timestamp| |Jira issue| ...
+        --------------------------------------------------------------
+
+
+       Jira issue representation and field mapping
+           _
+          / \     needs mapping info from config
+          \_/     needs field_handler info for the mapped fields
+                  could manufacture the states needed for the field handlers?
+                  and information about what state elements have to be present
+                  could be sub-functions in the operating function (staticmethods)
+
+        -----------------------------------------------------
+          |Jira issue + field_handers needed + fh_state info| 
+        -----------------------------------------------------
+
+
+     FieldHandlers in the WIC currently all have:
+          __init__
+          readConfig
+          transformIn
+          transformOut
+
+         Any state information related to origin system, dest system, issue type
+             is instantiated via readConfig and then remains stable
+
+           so, we may be able to hold the state in a key-value store where the key
+              is the conf_run_ident and a GCFunction could pull the state in 
+              as the first element of execution and the function could be called 
+              directly by the issue representation GCF (rather than put in a PubSub channel and picked up)
+
+         select attributes that have a FieldHandler (or Handlers) specified
+            instantiate the field handler with info necessary to set state
+            then pickle the instance and store in Google Datastore with key to include
+                sub_id, conf_run_id, FieldHandlerName
+
+         Then in the function that picks up the payload in the PubSub (the actual item data)
+         it will get the sub_id,conf_run_id and the list of relevant FieldHandlers (or can get the 
+         latter from the config which will also be in Google Datastore) 
+           and then for each mapped attribute
+           it will grab any stored FH for the attr
+              value = src_value
+              if FH for the src_attribute:
+                 grab FH from GDS and unpickle
+                 value = FH.transformOut(value)
+              if FH for the dest_attribute:
+                 grab FH from GDS and unpickle
+                 value = FH.transformOut(value)
+
+         !!!!  NB:  have proved that the pickle module can be used to serialize a class instance
+         !!!!       that can be resurrected with state info (for our purposes that state will be
+         !!!!       populated via __init__ and readConfig methods) and then that resurrected
+         !!!!       instance can have its transformIn or transformOut methods called with specific data
+         !!!!       TBD: still have to figure out how to deal with FieldHandlers that need to 
+         !!!!            consult (make REST call(s) to one or both of Rally / Jira) as part of 
+         !!!!            a transformation operation.
+              
+       ...   
+
+
+   *
+   *   Here's the crux of the problem
+   *      where for each mapped attribute
+   *           if a JiraFieldHandler  is specified for the attribute, call transformOut and sub the value
+   *           if a RallyFieldHandler is specified for the attribute, call transformIn  and sub the value
+   *
+   *    The concern here is that if this is done in a function then the function cost is O(n) where = num attributes
+   *    The alternative of having parallel functions (one for each attribute) seems a little bit unwieldy
+   *    and the collection of results into a single entity is probably wonky and potentially error prone
+   *
+ 
+       ...   
+
+       o -  Create the new counterpart Rally artifact from JSON data payload|
+
+        -----------------------------------------------------
+         | (item_key, Rally item ident, Jira item ident, 'update')|  , ...
+        -----------------------------------------------------
+
+       o - Update the Jira issue with the ident of the newly created counterpart Rally artifact
+
+       o -  Are there linkers involved?
+             Attachments
+             StoryToFeatureLinker
+
+
+       o - Log the completion of the connector configuration run
+
+       o - write the time-file and note the time-written and the con_run_ident that did it
+
+       o - invalidate any key-value pairs or GCS involving the conf_run_ident
+
+    ? What to do about ReleatedObjectLinkers that get executed subsequent to the 
+      Rally artifact getting created
+
+
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+potential use of Google Datastore  as a short term key-value store, the key can be compound
+and the value can be a dictionary with arbitrary data 
+
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
