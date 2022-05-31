@@ -1,0 +1,62 @@
+
+     Cloud Application Security Model
+     --------------------------------
+
+        The "product" is a multi-tenant application that must be configured by an authorized person in a Rally Subscription
+         with access to sufficient Rally Workspaces (Rally Workspace Admin) who also must supply credentials for storage in
+         the cloud environment for Rally and some other system (typically) Jira.
+
+        The product is then "run" by an authorized person associated with the Subscription (which doesn't have to be the application 
+        admin account) but must have been identified and enabled by the admin account to run the application.
+
+        There are other roles such as 'deputy', 'editor', 'executor', 'viewer', 'auditor', 'reviewer' to be explained later.   
+
+        Rule #1:  No credential data will be stored in clear-text
+
+        Rule #2:  No credential, Rally data, non-Rally system data will be passed in clear-text within a message to a Pub-Sub channel
+
+        Rule #3:  Keys for encyrpt/decrypt are generated for use during a single connector configuration session  and will
+                  consist of session-key, sub_id, executor_id, configuration_name (and possibly customer provided key for WIC use) 
+
+        Rule #4: Only admin can authorize a user to be assigned to any other role on a permanent basis
+
+        Rule #5: A deputy can be elevated to an admin only with approval by 1 other deputy. If that happens, the original admin account
+                 is deactivated and transitioned to 'retired' role
+
+                 Docs for the application should mention the need to replace the elevated 'deputy' with the addition of another deputy.
+                 There should be 3 deputies in effect at any time.  
+
+        Rule #6: A deputy can assign another user to a sub-deputy role but that role only lasts for 5 days max.
+                 The admin can make the assignment of an assigned role permanent.
+
+        Rule #7: actions taken by roles are logged (active role, user_name, target role, user_name, activity, status)
+
+        Rule #8: Pub-Sub channels should be "cleaned" on a periodic basis (anything older than 6 hours is wiped)
+
+
+
+
+     Roles - Responsibilities / Restrictions / Span
+   
+
+     Admin   -  Ultimate Ownership of WIC related information stored in the cloud (typically configurations and "Roster")
+
+     Deputy  -  Delegated rights from Admin for CRUD of configuration, access to logs, can modify Roster below Deputy level
+                                                                                       for some temporary time  period
+
+     Editor  -  Able to CRUD configurations for some scope
+
+     Executor - rights to run a configuration, ? can see logs ?
+
+     Viewer   - can view a configuration (or a set of configurations)
+
+     Auditor  -  can view configurations and config modification history, can see Roster and history of mods to Roster
+
+     Reviewer -  can view configurations and logs
+ 
+     
+       
+
+        
+  
+

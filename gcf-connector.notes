@@ -1,0 +1,144 @@
+
+
+  WIC in the cloud
+
+   Example in Google Cloud Platform 
+
+      as a set of Google Cloud Functions and Google Store (Postgres) to
+       
+         Store configurations
+               a configuration should have a list of admins, deputies, editors, readers
+               a revision history of changes to each configuration should be held for perusal by admin, deputies
+               a configuration may have up to 3 levels of meta-data (Enterprise (sub_id), Division (workspace?), Team (Project)
+               a configuration may have a designated location (geo, biz unit, product)
+
+         Provide an endpoint for connector session initiation
+
+         Provide an endpoint for progress, errors, warning, metrics, 
+                by configuration 
+                  show items processed by service
+  
+         Provide an endpoint for configuration current execution estimated complete time
+
+         Provide an endpoint for connector session termination
+
+         Provide an endpoint for last successful configuration session completion
+
+         Provide an endpoint for error list and retry
+
+         endpoint for config aggregate info
+            identification of systems, workspaces, projects, frequency, last runs, next run
+              (selection // filtering)
+
+         endpoint for similarity | dissimilarity scores
+            provide a means to specify the reference config
+                it may have 1 or more sections
+
+            
+     Questions...:
+        Current WIC has a time-file designating the last time a connector ran (at the  point where validation succeeded, before operations...)
+           where would such an element be placed in GCP?  (adjacent to the logs as is done currently in WIC)?
+
+        We would need to use SubscriptionID as a component of a key, but we would probably need to receive some other "secure signature"?
+        to be used in tandem with the SubscriptionID to make sure that any operation with the connector is "authorized" for 
+        the "SubscriptionID" under consideration?  
+           Something like a 2048 bit key, does it get changed on a frequent basis?
+              If it is changed in the middle of a configuration run (or mults) how does the current operation pipeline still succeed?
+
+
+     # Sketch of functions...
+
+     HTTP triggered GC Function to start the operation of a connector configuration session
+
+        Using Pub-Sub and Pub-Sub triggered functions to flow data and do atomic operations
+
+            example of atomic operations
+               retrieving "new"     items in a target source system
+               retrieving "updated" items in a target source system
+               creating a counterpart item in a dest system to an item in the source system
+               updating a counterpart item in a dest system to an item in the source system
+               getting a list of Attachment items (sans the actual attachment data) for an artifact in a data system
+               creating an attachment in a system
+               deleting an attachment in a system
+               obtain a Parent for an artifact  (and/or Feature)
+               link to another element in the target system (like Rally Story to Parent, or Rally Story to Feature, or Jira Story to Epic)
+               detach from another element in the target system
+
+
+             these would be needed for testing and maybe by the connector
+               creating an item
+               retrieving an item by ident or query conformance
+               updating an item
+               deleting an item
+               Rally adding a ConversationPost to a Discussion of an Artifact in Rally
+               Rally deleting a ConversationPost from a Discussion for an Artifact in Rally
+
+              
+      A problem with flowing data through a chain of atomic operations is that most of the atomic operations are going to need
+      to use credentials to obtain a connection to an action element or storage element.  Passing along this info in the Pub-Sub
+      messages seems sketchy from a security perspective.  Another means might be to cache the credential info in a KeyValue storage 
+      element in GCP and "retrieve" the credential as needed.  Unsure about performance with this as well as security aspects
+      that may be same or different from having the credentials in the data gummy. 
+
+      
+         POST rwic/start?configuration=<configuration_name>   data = {'uniquer' : specification, 'technique': scheduler|manual, 
+                                                                      'invoker' : authorized_ident, subscription_id : sub_id, enabler_key: ek,
+                                                                     }
+
+               This function must determine validity of the request 
+                    the configuration exists, it is singular or the uniquer leads to a single configuration and the originator is known and is valid
+                    Return a relevant status code and a data struct of {'connector_ident' : GUID, continuation_code: GOOD|BAD, 
+                                                                        'entry_element': '', remarks' ''}
+                    Log the request, such that any future inquiry
+                    Use the connector_ident in any payload for a Pub-Sub message or url query string for GCP function that gets called
+                    publish message to Pub-Sub channel 'WIC-Starter' with 
+                         connector_ident, sub_id, originator, 
+
+                    
+           Pub-Sub channel 'WIC-Starter' gets a message 
+
+           ...   many steps and forks and merges involving functions and channels
+
+           
+           Final log message get issued, a time file is written to live in the same bag as log file, the connector_ident is invalidated
+               
+
+
+
+  
+        
+     ============================================================================================================================= 
+
+    Draft #1
+        Only configs and log info exist in GCP, no actual customer data from the source data systems (Rally, Jira)  
+
+
+    Security aspects
+  
+       All config information is encrypted at rest
+
+       Log information is encrypted at rest
+
+
+     Retry logic
+
+        Retry info is purged after 4 failed attempts
+
+        A successful retry results in a log entry with a Retry / count designation
+
+
+     An admin can enable|disable configurations at any "level" (Enterprise|Division|Team)
+
+     An admin can "monitor" 
+          Success/Failures by E-D-T 
+          
+     A configuration may be saved as a "draft" but the draft cannot be classified as "ready" until a validation has been done
+
+     A configuration is validated by using the config info to "connect" successfully with the 2 source systems AND
+       a limited count of "new" items can be retrieved
+
+     A configuration can only have 1 session operating at any time
+        no queueing
+
+
+
