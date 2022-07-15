@@ -1,3 +1,12 @@
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+
+potential use of Google Datastore  as a short term key-value store, the key can be compound
+and the value can be a dictionary with arbitrary data 
+
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+
 
 
    Copy Jira to Rally pipeline
@@ -29,14 +38,31 @@
                      +______+     keyed by the conf_auth_key and conf_run_ident
 
 
+
+
+
+             Runnable Service Queue
         ---------------------------
           |conf_run_passport| ...
         ---------------------------
-      
 
-       Jira issues retrieval
            _
-          / \
+          / \   PrepService
+          \_/
+                Obtain a FieldHandler for each mapping as required by the service required 
+                instantiate it with any state info to span the conf_run_ident
+                Pickle it and stuff in DataStorage with meta data of FHName, conf_run_ident
+                Mark service in DS Scoreboard as active
+                
+     
+            Jira Data Spec
+        -------------------------------
+            |conf_run_passport|           <--- can get to config in DS ActiveConfig from here which has Jira target, creds, issue type, selection criteria
+        -------------------------------
+
+
+           _
+          / \  Jira Issues Retrieval
           \_/
            
 
@@ -50,10 +76,19 @@
 
         Create a "key" for the item being processed
              (sub_id, conf_run_ident, x of y, pipeline_entry_timestamp)
+            perhaps throw in default field value here
 
+
+          MappableWICItems
         --------------------------------------------------------------
-          |Jira issue, num x of y, timestamp| |Jira issue| ...
+         |conf_run_passport, source system type=Jira,  num x of y, timestamp, Jira issue data|  ...
         --------------------------------------------------------------
+
+           _
+          / \  MappedFieldsTranformScatter
+          \_/
+             A MappedFieldsTransformScatter node is supplied by a Pub-Sub topic 'MappableWICItems'
+           
 
 
        Jira issue representation and field mapping
@@ -118,10 +153,44 @@
    *           if a JiraFieldHandler  is specified for the attribute, call transformOut and sub the value
    *           if a RallyFieldHandler is specified for the attribute, call transformIn  and sub the value
    *
-   *    The concern here is that if this is done in a function then the function cost is O(n) where = num attributes
+   *    The concern here is that if this is done in a function then the function cost is O(n) where = n num attributes
    *    The alternative of having parallel functions (one for each attribute) seems a little bit unwieldy
-   *    and the collection of results into a single entity is probably wonky and potentially error prone
+   *    and the collection of results into a single entity may be messy and potentially error prone
+   *    but we are going to explore that here
    *
+
+         +-------------------------------------------------------------------------------------------------------------------+
+           Exploring the idea that every transform is a function node  and each node is supplied by a specific pub-sub topic
+
+             A MappedFieldsTransformScatter node is supplied by a Pub-Sub topic 'MappableWICItems'
+
+                      an item in the MappableWICItems topic has:
+
+                        omni-ident
+                           
+                           chrono_ident
+                           session_id
+                             config_ident
+                           subscription_id
+                           integration_ident
+                           integration_name
+                           customer_fuzz_key
+                  
+                       service flow  (Rally, Jira) or (Jira, Rally)
+                       field_mappings  list of paired fields [(Name, Summary), (Description, Desciption)]
+                       field_handlers
+                       origin_system (ie, Rally or Jira)
+                       dest_system   (ie, Rally or Jira)
+
+                       current_data {'Name' : 'dfasdsa', ...}
+                          value at each key maybe gets to be an object for future transforms  (there might be an inbound and an outbound transform)
+
+                       The function has to iterate over the mapped field names and for each one
+                             o - 
+                       
+
+
+         +-------------------------------------------------------------------------------------------------------------------+
  
        ...   
 
@@ -132,25 +201,69 @@
         -----------------------------------------------------
 
        o - Update the Jira issue with the ident of the newly created counterpart Rally artifact
+              \
+               \
+                \
+                 errors throw an item on a separate Pub-Sub topic
+
+            + success puts item into Pub-Sub topic 
+
+          ----------------------------
+             Linkable Ready Work Items
+          ----------------------------
 
        o -  Are there linkers involved?
              Attachments
              StoryToFeatureLinker
 
+          -----------------------------------
+             PostProcessable Work Item Pairs   (the payload includes a linkers "ticket" LED for each linking operation (White/Yellow/Green/Red)
+          -----------------------------------
+
+       o - Special processing like getting the unique list of Jira Users and sending it to Rally in a X-RallyIntegrationConnectedUsers header item
+
+          ------------------------------
+            Completed Work Item Pairs
+          ------------------------------
+
+
+       o - determine conf_run_ident status, are all items processed?
+          -------------------
+
+          -------------------
 
        o - Log the completion of the connector configuration run
 
+          -------------------
+
+          -------------------
+
+
        o - write the time-file and note the time-written and the con_run_ident that did it
 
+          -------------------
+
+          -------------------
+
+       o - Update the generic Application Scoreboard with info related to
+                SubId, integration, config name, service(s), count of items processed, elapsed time per service, total clock time, started, ended
+                success percentage, items retried, failed items, conf_run_ident to ident log segment
+
+          -------------------
+
+          -------------------
+
        o - invalidate any key-value pairs or GCS involving the conf_run_ident
+
+          -------------------
+            WIC Success indicator  (for use with GCF http based triggers that might need to do Pub-Sub filter query to find a specific item)
+                                   (No ACK for 15 days, but then a cron based GCF clears "stale" stuff out periodically)
+          -------------------
+
+
+  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!11
 
     ? What to do about ReleatedObjectLinkers that get executed subsequent to the 
       Rally artifact getting created
 
 
-++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-potential use of Google Datastore  as a short term key-value store, the key can be compound
-and the value can be a dictionary with arbitrary data 
-
-++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
